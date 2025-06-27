@@ -1,0 +1,6 @@
+@Rest_API_CV_HostAddress = http://localhost:5189
+
+GET {{Rest_API_CV_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
