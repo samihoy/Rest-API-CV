@@ -157,7 +157,7 @@ namespace Rest_API_CV.EndPoints
 
                 await context.SaveChangesAsync();
 
-                return Results.Ok("Education record updated.");
+                return Results.Ok("Education record updated");
             });
 
             //------------------------------------------------------------------------------------------------------------
