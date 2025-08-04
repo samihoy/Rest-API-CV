@@ -2,6 +2,7 @@
 using Microsoft.IdentityModel.Tokens;
 using Rest_API_CV.Data;
 using Rest_API_CV.DTO;
+using Rest_API_CV.DTO.PersonDTOs;
 using Rest_API_CV.Models;
 using System.Text.Json;
 
@@ -9,26 +10,53 @@ namespace Rest_API_CV.EndPoints
 {
     public class APIEndPoints
     {
+
         public static void RegisterEndPoints(WebApplication app)
         {
             //------------------------------------------------------------------------------------------------------------
-            //      Hämta all data (alla personer, utbildningar och jobberfarenheter).
+            //      Hämta all relevant data med DTO's (person uppgifter, utbildningar och jobberfarenheter).
             //------------------------------------------------------------------------------------------------------------
 
             app.MapGet("/alldata", async (ResumeDBcontext context) =>
             {
-                var People = await context.People.Include(e => e.Educations).Include(e => e.Employments).ToArrayAsync();
+                var people = await context.People
+                        .Include(p => p.Educations)
+                        .Include(p => p.Employments)
+                        .Select(p => new PersonDTO
+                        {
+                            Id = p.Id,
+                            Name = p.Name,
+                            Description = p.Description,
+                            Educations = p.Educations.Select(e => new EducationDTO
+                            {
+                                Id = e.Id,
+                                SchoolName = e.SchoolName,
+                                Diploma = e.Diploma
+                            
+                            }).ToList(),
 
-                if (People.IsNullOrEmpty())
-                {
-                    return Results.NotFound("No data found in database");
-                }
+                            Employments = p.Employments.Select(emp => new EmploymentDTO
+                            {
+                                Id = emp.Id,
+                                JobbTitle = emp.JobbTitle,
+                                Company = emp.Company
+                            
+                            }).ToList()
+                        })
+                        .ToListAsync();
 
-                return Results.Ok(People);
+
+                        if (people.IsNullOrEmpty())
+                        {
+                            return Results.NotFound("No data found in database");
+                        }
+
+                return Results.Ok(people);
+
             });
 
             //------------------------------------------------------------------------------------------------------------
-            //      Hämta en specifik post baserat på dess ID.
+            //      Hämta en specifik post/user baserat på dess ID.
             //------------------------------------------------------------------------------------------------------------
 
             app.MapGet("/Getperson/{id}", async (ResumeDBcontext context, int id) =>
@@ -44,26 +72,7 @@ namespace Rest_API_CV.EndPoints
 
             });
 
-            //------------------------------------------------------------------------------------------------------------
-            //      Lägga till ny utbildning eller jobberfarenhet.
-            //      jag har skappat den så att du anger ett användar id och får lägga till en employment till den användaren
-            //------------------------------------------------------------------------------------------------------------
 
-            app.MapPost("/Add/Employment/Person/{id}", async (ResumeDBcontext context, int id, Employment employment) =>
-            {
-                var Person = await context.People.FirstOrDefaultAsync(p => p.Id == id);
-
-                if (Person == null)
-                {
-                    return Results.NotFound("No user in database");
-                }
-
-                Person.Employments.Add(employment);
-                await context.SaveChangesAsync();
-                return Results.Ok("Emplyment added to person");
-
-
-            });
 
             //------------------------------------------------------------------------------------------------------------
             //      Uppdatera befintlig information (t.ex. ändra jobbtitel eller examensår).
@@ -102,23 +111,127 @@ namespace Rest_API_CV.EndPoints
 
             });
 
+            app.MapPost("/education/{id}", async (ResumeDBcontext context, int id, EducationDTO educationDto) =>
+            {
+                var person = await context.People
+                    .Include(p => p.Educations)
+                    .FirstOrDefaultAsync(p => p.Id == id);
+
+                if (person == null)
+                {
+                    return Results.NotFound($"No person found with that ID");
+                }
+
+                var education = new Education
+                {
+                    SchoolName = educationDto.SchoolName,
+                    Diploma = educationDto.Diploma,
+                    EnrolmentDate = DateTime.Now,
+                    GraduationDate = DateTime.Now
+                };
+
+                person.Educations.Add(education);
+                await context.SaveChangesAsync();
+
+                return Results.Ok("edducation sucsecsfully added");
+            });
+
+            app.MapPut("/education/{id}", async (ResumeDBcontext context, int id, EducationDTO updatedEducation) =>
+            {
+                var DBeducation = await context.Educations.FirstOrDefaultAsync(e => e.Id == id);
+
+                if (DBeducation == null)
+                {
+                    return Results.NotFound("No education with that ID in database.");
+                }
+
+                if (DBeducation.SchoolName != updatedEducation.SchoolName )
+                {
+                    DBeducation.SchoolName = updatedEducation.SchoolName;
+                }
+                if(DBeducation.Diploma!=updatedEducation.Diploma)
+                {
+                    DBeducation.Diploma = updatedEducation.Diploma;
+                }
+
+
+                await context.SaveChangesAsync();
+
+                return Results.Ok("Education record updated.");
+            });
+
             //------------------------------------------------------------------------------------------------------------
             //      Ta bort en utbildning eller jobberfarenhet.
             //------------------------------------------------------------------------------------------------------------
 
-            app.MapDelete("delete/education/{id}", async (ResumeDBcontext context, int id) =>
+            app.MapDelete("/education/{id}", async (ResumeDBcontext context, int id) =>
             {
                 var education = await context.Educations.FirstOrDefaultAsync(e => e.Id == id);
 
                 if (education == null)
                 {
-                    return Results.BadRequest("No education found");
+                    return Results.NotFound("No education found in database");
                 }
 
                 context.Educations.Remove(education);
                 await context.SaveChangesAsync();
-                return Results.Ok("Education deleted");
 
+                return Results.Ok("Education deleted from fdatabase");
+            });
+
+            app.MapGet("/employment/{id}", async (ResumeDBcontext context, int id) =>
+            {
+                var employment = await context.Employments.FirstOrDefaultAsync(e => e.Id == id);
+
+                if(employment == null)
+                {
+                    return Results.NotFound("no emplyment databas object found with that ID");
+                }
+                var EmploymentDto = new EmploymentDTO
+                {
+                    Id = employment.Id,
+                    JobbTitle = employment.JobbTitle,
+                    Company = employment.Company
+                };
+
+                return Results.Ok(EmploymentDto);
+
+            });
+
+            //------------------------------------------------------------------------------------------------------------
+            //      Lägga till ny utbildning eller jobberfarenhet.
+            //      jag har skappat den så att du anger ett användar id och får lägga till en employment till den användaren
+            //------------------------------------------------------------------------------------------------------------
+
+            app.MapPost("/Add/Employment/Person/{id}", async (ResumeDBcontext context, int id, Employment employment) =>
+            {
+                var Person = await context.People.FirstOrDefaultAsync(p => p.Id == id);
+
+                if (Person == null)
+                {
+                    return Results.NotFound("No user in database");
+                }
+
+                Person.Employments.Add(employment);
+                await context.SaveChangesAsync();
+                return Results.Ok("Emplyment added to person");
+
+
+            });
+
+            app.MapDelete("/employment/{id}", async (ResumeDBcontext context, int id) =>
+            {
+                var employment = await context.Employments.FirstOrDefaultAsync(e => e.Id == id);
+
+                if (employment == null)
+                {
+                    return Results.NotFound("no emplyment databas object found with that ID");
+                }
+
+                context.Employments.Remove(employment);
+                await context.SaveChangesAsync();
+
+                return Results.Ok("Employment record successfully removed");
             });
 
             //------------------------------------------------------------------------------------------------------------
